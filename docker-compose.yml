@@ -1,0 +1,62 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/infraops
+      - REDIS_URL=redis://redis:6379
+      - AUTH_SECRET=your-super-secret-key
+      - AI_API_URL=https://r-bots-free-apis.co08.art/api/v1/api/gptlogic
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - UPI_ID=toxic-karthik.sai@fam
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: infraops
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: npx tsx scripts/scheduler.ts
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/infraops
+      - REDIS_URL=redis://redis:6379
+      - AI_API_URL=https://r-bots-free-apis.co08.art/api/v1/api/gptlogic
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
