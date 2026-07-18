@@ -1,0 +1,386 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          UserRole  @default(USER)
+  plan          Plan      @default(FREE)
+  planExpiresAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  monitors      Monitor[]
+  incidents     Incident[]
+  teamMembers   TeamMember[]
+  notifications Notification[]
+  payments      Payment[]
+  statusPages   StatusPage[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Monitor {
+  id              String        @id @default(cuid())
+  name            String
+  url             String
+  type            MonitorType
+  method          String        @default("GET")
+  interval        Int           @default(300)
+  timeout         Int           @default(30)
+  retries         Int           @default(3)
+  expectedStatus  Int?
+  expectedKeyword String?
+  headers         Json?
+  body            String?
+  authType        AuthType?
+  authValue       String?
+  isActive        Boolean       @default(true)
+  isPaused        Boolean       @default(false)
+  region          String        @default("us-east")
+  tags            String[]
+  priority        Priority      @default(MEDIUM)
+  environment     Environment   @default(PRODUCTION)
+  userId          String
+  teamId          String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team          Team?          @relation(fields: [teamId], references: [id])
+  checks        MonitorCheck[]
+  incidents     Incident[]
+  sslCerts      SSLCertificate[]
+  maintenanceWindows MaintenanceWindow[]
+
+  @@index([userId])
+  @@index([isActive])
+}
+
+model MonitorCheck {
+  id            String    @id @default(cuid())
+  monitorId     String
+  status        CheckStatus
+  responseTime  Int?
+  statusCode    Int?
+  errorMessage  String?
+  region        String
+  checkedAt     DateTime  @default(now())
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId])
+  @@index([checkedAt])
+}
+
+model Incident {
+  id              String          @id @default(cuid())
+  monitorId       String
+  title           String
+  description     String?
+  severity        Severity
+  status          IncidentStatus  @default(INVESTIGATING)
+  rootCause       String?
+  aiAnalysis      String?         @db.Text
+  aiRecommendations String?       @db.Text
+  resolvedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  monitor     Monitor      @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  user        User?        @relation(fields: [userId], references: [id])
+  userId      String?
+  alerts      Alert[]
+  timeline    IncidentTimeline[]
+
+  @@index([monitorId])
+  @@index([status])
+}
+
+model IncidentTimeline {
+  id          String   @id @default(cuid())
+  incidentId  String
+  message     String
+  type        TimelineType
+  createdAt   DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model Alert {
+  id            String      @id @default(cuid())
+  incidentId    String
+  channel       AlertChannel
+  status        AlertStatus @default(PENDING)
+  sentAt        DateTime?
+  errorMessage  String?
+  createdAt     DateTime    @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model SSLCertificate {
+  id          String    @id @default(cuid())
+  monitorId   String
+  domain      String
+  issuer      String?
+  expiryDate  DateTime?
+  isValid     Boolean   @default(true)
+  daysUntilExpiry Int?
+  checkedAt   DateTime  @default(now())
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members   TeamMember[]
+  monitors  Monitor[]
+}
+
+model TeamMember {
+  id     String     @id @default(cuid())
+  teamId String
+  userId String
+  role   TeamRole   @default(MEMBER)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
+model StatusPage {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  isPublic    Boolean  @default(true)
+  customDomain String?
+  logoUrl     String?
+  brandColor  String   @default("#0F172A")
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      NotificationType
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  userId        String
+  amount        Float
+  currency      String        @default("INR")
+  status        PaymentStatus @default(PENDING)
+  upiId         String
+  screenshotUrl String?
+  verifiedBy    String?
+  verifiedAt    DateTime?
+  plan          Plan
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MaintenanceWindow {
+  id          String    @id @default(cuid())
+  monitorId   String
+  startTime   DateTime
+  endTime     DateTime
+  description String?
+  createdAt   DateTime  @default(now())
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum MonitorType {
+  HTTP
+  HTTPS
+  TCP
+  UDP
+  PING
+  DNS
+  SSL
+  KEYWORD
+  API
+  WEBSOCKET
+}
+
+enum AuthType {
+  BASIC
+  BEARER
+  API_KEY
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum Environment {
+  DEVELOPMENT
+  STAGING
+  PRODUCTION
+}
+
+enum CheckStatus {
+  UP
+  DOWN
+  DEGRADED
+  TIMEOUT
+  ERROR
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  INVESTIGATING
+  IDENTIFIED
+  MONITORING
+  RESOLVED
+}
+
+enum TimelineType {
+  DETECTED
+  INVESTIGATING
+  IDENTIFIED
+  MITIGATING
+  RESOLVED
+  AI_ANALYSIS
+}
+
+enum AlertChannel {
+  EMAIL
+  WEBHOOK
+  DISCORD
+  SLACK
+  TELEGRAM
+  SMS
+}
+
+enum AlertStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum NotificationType {
+  INCIDENT
+  RECOVERY
+  MAINTENANCE
+  BILLING
+  SYSTEM
+}
+
+enum PaymentStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  REFUNDED
+}
+
